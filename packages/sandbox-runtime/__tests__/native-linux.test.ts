@@ -30,7 +30,6 @@ import type { SandboxSpawnConfig } from "../src/types.js";
 // by native-windows / win-job-object / win-appcontainer, which do run there.
 const describePosix = describe.skipIf(process.platform === "win32");
 
-
 // The rlimit probe passes on any host with a working /bin/sh, which would
 // make the legacy argv/capability assertions below host-dependent. Pin it
 // OFF by default; the wrapper suite pins it ON itself.

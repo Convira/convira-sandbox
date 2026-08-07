@@ -30,7 +30,6 @@ import type { SandboxSpawnConfig } from "../src/types.js";
 // by native-windows / win-job-object / win-appcontainer, which do run there.
 const describePosix = describe.skipIf(process.platform === "win32");
 
-
 // The optional kernel-hardening enforcer is never exercised here; stub it so
 // the import in wrapSpawn cannot depend on whether the native binding exists.
 const { getSeccompFd } = vi.hoisted(() => ({ getSeccompFd: vi.fn() }));
