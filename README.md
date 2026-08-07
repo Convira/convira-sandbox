@@ -1,5 +1,8 @@
 # Convira Sandbox
 
+[![CI](https://github.com/Convira/convira-sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/Convira/convira-sandbox/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 The operating-system confinement layer from [Convira](https://www.convira.ai), a desktop AI
 agent that works on the files already on your computer.
 
