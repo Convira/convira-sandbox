@@ -1,0 +1,68 @@
+{
+  "name": "@convira/sandbox-runtime",
+  "version": "0.1.0",
+  "description": "Cross-platform OS confinement for child processes: macOS Seatbelt, Linux namespaces + Landlock/seccomp, Windows AppContainer + Job Objects, with probe-verified capability reporting.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Convira/convira-sandbox",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Convira/convira-sandbox.git",
+    "directory": "packages/sandbox-runtime"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./detect": {
+      "types": "./dist/detect.d.ts",
+      "default": "./dist/detect.js"
+    },
+    "./adapters/native-macos": {
+      "types": "./dist/adapters/native-macos.d.ts",
+      "default": "./dist/adapters/native-macos.js"
+    },
+    "./adapters/native-linux": {
+      "types": "./dist/adapters/native-linux.d.ts",
+      "default": "./dist/adapters/native-linux.js"
+    },
+    "./adapters/native-windows": {
+      "types": "./dist/adapters/native-windows.d.ts",
+      "default": "./dist/adapters/native-windows.js"
+    }
+  },
+  "files": [
+    "dist",
+    "native/build/Release/win_job_object.node",
+    "native/build/Release/convira_sbx_launch.exe",
+    "native/binding.gyp",
+    "native/win_job_object.cc",
+    "native/win_appcontainer_common.h",
+    "native/win_appcontainer_launch.cc",
+    "scripts/build-win-job-object-native.mjs",
+    "scripts/check-win-job-object-native.mjs"
+  ],
+  "optionalDependencies": {
+    "@convira/sandbox-enforcer": "workspace:*",
+    "node-gyp": "^12.0.0"
+  },
+  "scripts": {
+    "build": "pnpm run build:native && tsc -p tsconfig.build.json",
+    "build:native": "node scripts/build-win-job-object-native.mjs",
+    "check:native": "node scripts/check-win-job-object-native.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run build:native && vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.0"
+  }
+}

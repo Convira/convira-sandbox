@@ -1,0 +1,30 @@
+{
+  "name": "convira-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OS-level confinement layer for the Convira desktop AI agent - Seatbelt, Landlock/seccomp and AppContainer/Job Objects, with probe-verified capability reporting.",
+  "license": "Apache-2.0",
+  "homepage": "https://www.convira.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Convira/convira-sandbox.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Convira/convira-sandbox/issues"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.34.5",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r build && pnpm -r typecheck",
+    "test": "pnpm -r build && pnpm -r test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.5",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.10"
+  }
+}
