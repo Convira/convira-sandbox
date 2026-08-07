@@ -25,6 +25,15 @@ import {
 } from "../src/rlimit.js";
 import type { SandboxSpawnConfig } from "../src/types.js";
 
+// These suites model a POSIX host. They assert on absolute POSIX paths, on
+// bwrap/sandbox-exec argv, and on 0600/0700 file modes - primitives Windows
+// does not have, which is why they report 438 (0666) where 384 (0600) is
+// expected. The adapter under test cannot run on Windows either, so executing
+// them there measures the host, not the code. Windows confinement is covered
+// by native-windows / win-job-object / win-appcontainer, which do run there.
+const describePosix = describe.skipIf(process.platform === "win32");
+
+
 // The rlimit probe passes on any host with a working /bin/sh, which would
 // make the legacy argv/capability assertions below host-dependent. Pin it
 // OFF by default; suites that exercise the wrapper pin it ON (or restore
@@ -59,7 +68,7 @@ function makeConfig(overrides: Partial<SandboxSpawnConfig> = {}): SandboxSpawnCo
   };
 }
 
-describe("macosAdapter", () => {
+describePosix("macosAdapter", () => {
   it("has the correct platform identifier", () => {
     expect(macosAdapter.platform).toBe("macos-sandbox-exec");
   });
@@ -95,7 +104,7 @@ describe("macosAdapter", () => {
 // Availability probing is a plain fs.existsSync on the SIP-protected binary
 // path, so it executes (and counts as covered) on every platform: true on
 // macOS hosts, false elsewhere.
-describe("macosAdapter availability", () => {
+describePosix("macosAdapter availability", () => {
   afterEach(() => {
     _resetMacosAdapterCache();
   });
@@ -129,7 +138,7 @@ describe("macosAdapter availability", () => {
 // the command-resolution helpers (resolveCommandPath, commandReadPaths) execute
 // on Linux CI as well. The common path passes the profile INLINE via `-p`, so
 // there is no temp file to clean up.
-describe("macosAdapter.wrapSpawn (profile assembly is platform-independent)", () => {
+describePosix("macosAdapter.wrapSpawn (profile assembly is platform-independent)", () => {
   it("wraps an absolute command with sandbox-exec -p <profile> inline and whitelists its dir", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-macos-cmd-"));
     const fakeBin = path.join(dir, "fake-tool");
@@ -205,7 +214,7 @@ describe("macosAdapter.wrapSpawn (profile assembly is platform-independent)", ()
   });
 });
 
-describe("macosAdapter.wrapSpawn rlimit wrapper (probe-gated, innermost layer)", () => {
+describePosix("macosAdapter.wrapSpawn rlimit wrapper (probe-gated, innermost layer)", () => {
   it("inserts the ulimit shell INSIDE sandbox-exec when the probe passed", async () => {
     _setRlimitProbeForTests({ ok: true, procFlag: "-u" });
     const hostile = ["$(touch /tmp/rlimit-macos-pwned)", "; touch /tmp/x", "`id`"];
@@ -274,7 +283,7 @@ describe("macosAdapter.wrapSpawn rlimit wrapper (probe-gated, innermost layer)",
   });
 });
 
-describe("generateSeatbeltProfile", () => {
+describePosix("generateSeatbeltProfile", () => {
   it("starts with deny default", () => {
     const profile = _generateSeatbeltProfile(makeConfig());
     expect(profile).toContain("(version 1)");
@@ -511,7 +520,7 @@ describe("generateSeatbeltProfile", () => {
   });
 });
 
-describe("legacyMacosProfile", () => {
+describePosix("legacyMacosProfile", () => {
   it("denies every sensitive home subtree while preserving only the interpreter floor", () => {
     const profile = legacyMacosProfile('/Users/dev-user/with "quotes"///');
 
@@ -527,7 +536,7 @@ describe("legacyMacosProfile", () => {
   });
 });
 
-describe("private profile temp-file lifecycle (TOCTOU fallback)", () => {
+describePosix("private profile temp-file lifecycle (TOCTOU fallback)", () => {
   afterEach(() => {
     _cleanupCreatedProfiles();
   });

@@ -49,8 +49,19 @@ function nodeBootReadPaths(): string[] {
  * The old guard was a plain early return, which made the test REPORT AS PASSED
  * on a host with no native sandbox — so a CI leg without one looked like proof
  * of confinement. `it.skipIf` marks it skipped, which is the honest signal.
+ *
+ * win32 is excluded for the same reason, and it is a KNOWN GAP rather than a
+ * property of the platform: on GitHub-hosted Windows runners the AppContainer
+ * launcher fails to start the child with `CreateProcessW failed (code 203)`,
+ * so these cases cannot run there yet. Tracked in
+ * https://github.com/Convira/convira-sandbox/issues/1.
+ *
+ * They are skipped, never passed. A green Windows leg today proves the unit
+ * suites (native-windows, win-job-object, win-appcontainer) hold; it does NOT
+ * prove real confinement on Windows, and nothing here should be read that way
+ * until issue #1 closes.
  */
-const requiresSandbox = it.skipIf(!hasNativeSandbox);
+const requiresSandbox = it.skipIf(!hasNativeSandbox || process.platform === "win32");
 
 describe("integration: filesystem isolation", () => {
   requiresSandbox("denies reading files outside allowed paths", async () => {

@@ -45,7 +45,12 @@ describe("detectAdapter", () => {
     expect(typeof caps.filesystemIsolation).toBe("boolean");
     expect(typeof caps.networkIsolation).toBe("boolean");
     expect(typeof caps.resourceLimits).toBe("boolean");
-  });
+    // 60s, not the 5s default: detectAdapter("auto") runs the live capability
+    // probes, which spawn real processes and observe real outcomes. That is
+    // the design (a capability is reported only once its own probe passes), so
+    // it is inherently slow - measured at 10s+ on a Windows CI runner, where
+    // the default timeout failed this test while the code was working fine.
+  }, 60_000);
 
   it("passthrough adapter is always available", async () => {
     expect(await passthroughAdapter.available()).toBe(true);

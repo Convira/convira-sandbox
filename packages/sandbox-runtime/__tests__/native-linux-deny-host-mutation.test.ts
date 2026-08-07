@@ -22,6 +22,15 @@ import { linuxAdapter, _resetLinuxAdapterCache } from "../src/adapters/native-li
 import { _setRlimitProbeForTests, _resetRlimitProbeCache } from "../src/rlimit.js";
 import type { SandboxSpawnConfig } from "../src/types.js";
 
+// These suites model a POSIX host. They assert on absolute POSIX paths, on
+// bwrap/sandbox-exec argv, and on 0600/0700 file modes - primitives Windows
+// does not have, which is why they report 438 (0666) where 384 (0600) is
+// expected. The adapter under test cannot run on Windows either, so executing
+// them there measures the host, not the code. Windows confinement is covered
+// by native-windows / win-job-object / win-appcontainer, which do run there.
+const describePosix = describe.skipIf(process.platform === "win32");
+
+
 // The optional kernel-hardening enforcer is never exercised here; stub it so
 // the import in wrapSpawn cannot depend on whether the native binding exists.
 const { getSeccompFd } = vi.hoisted(() => ({ getSeccompFd: vi.fn() }));
@@ -47,7 +56,7 @@ function mountIndex(args: string[], flag: string, value: string): number {
   return -1;
 }
 
-describe("linuxAdapter deny paths never mutate the host", () => {
+describePosix("linuxAdapter deny paths never mutate the host", () => {
   let fakeResources: string;
   let prevResourcesPath: string | undefined;
   let home: string;

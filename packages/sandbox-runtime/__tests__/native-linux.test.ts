@@ -22,6 +22,15 @@ import {
 import { _setRlimitProbeForTests, _resetRlimitProbeCache } from "../src/rlimit.js";
 import type { SandboxSpawnConfig } from "../src/types.js";
 
+// These suites model a POSIX host. They assert on absolute POSIX paths, on
+// bwrap/sandbox-exec argv, and on 0600/0700 file modes - primitives Windows
+// does not have, which is why they report 438 (0666) where 384 (0600) is
+// expected. The adapter under test cannot run on Windows either, so executing
+// them there measures the host, not the code. Windows confinement is covered
+// by native-windows / win-job-object / win-appcontainer, which do run there.
+const describePosix = describe.skipIf(process.platform === "win32");
+
+
 // The rlimit probe passes on any host with a working /bin/sh, which would
 // make the legacy argv/capability assertions below host-dependent. Pin it
 // OFF by default; the wrapper suite pins it ON itself.
@@ -69,7 +78,7 @@ function makeConfig(overrides: Partial<SandboxSpawnConfig> = {}): SandboxSpawnCo
   };
 }
 
-describe("linuxAdapter", () => {
+describePosix("linuxAdapter", () => {
   it("has the correct platform identifier", () => {
     expect(linuxAdapter.platform).toBe("linux-bubblewrap");
   });
@@ -196,7 +205,7 @@ describe("linuxAdapter", () => {
   });
 });
 
-describe("linuxAdapter cache reset", () => {
+describePosix("linuxAdapter cache reset", () => {
   beforeEach(() => {
     _resetLinuxAdapterCache();
   });
@@ -225,7 +234,7 @@ describe("linuxAdapter cache reset", () => {
 // is installed, exercising isConfined()'s env branches and the confined-env
 // stderr warning on Linux CI. On hosts without bwrap the probe short-circuits
 // earlier but still returns false, so the assertion is unconditional.
-describe("linuxAdapter confinement detection", () => {
+describePosix("linuxAdapter confinement detection", () => {
   let stderrSpy: MockInstance<typeof process.stderr.write>;
 
   beforeEach(() => {
@@ -254,7 +263,7 @@ describe("linuxAdapter confinement detection", () => {
 // (not full `available()`), so we inject a fake bundled binary via
 // process.resourcesPath to drive the seccomp branch deterministically on any
 // host — closing the gap where the existing tests never exercise --seccomp.
-describe("linuxAdapter seccomp profile", () => {
+describePosix("linuxAdapter seccomp profile", () => {
   let fakeResources: string;
   let prevResourcesPath: string | undefined;
 
@@ -616,7 +625,7 @@ describe("linuxAdapter seccomp profile", () => {
 // bwrap binary integrity gate: the launcher we exec must be a non-writable
 // regular file owned by root or us, and a system bwrap must be pinned by
 // ABSOLUTE path (never the bare name that re-resolves through PATH).
-describe("bwrap integrity gate (statTrusted / findBwrap)", () => {
+describePosix("bwrap integrity gate (statTrusted / findBwrap)", () => {
   let dir: string;
   let prevResourcesPath: string | undefined;
 
@@ -689,7 +698,7 @@ describe("bwrap integrity gate (statTrusted / findBwrap)", () => {
 // can fail) off Linux too — unlike the availability-guarded tests above, which
 // silently no-op wherever bwrap is absent. That is precisely the blind spot
 // that let the /dev/null regression reach a packaged Linux build.
-describe("linuxAdapter device binds", () => {
+describePosix("linuxAdapter device binds", () => {
   let fakeResources: string;
   let prevResourcesPath: string | undefined;
 

@@ -29,6 +29,13 @@ Read this part before the rest.
 - **No third-party audit has been performed on this code.** When one is, the report will be
   linked here. Until then, treat this as source you can read, not as source someone else has
   vouched for.
+- **A green CI tick does not currently prove confinement on Windows.** The Windows unit suites
+  pass, but the four integration cases that launch a real confined process are skipped there:
+  on GitHub-hosted runners the AppContainer launcher fails with `CreateProcessW failed
+  (code 203)`. It is an open question whether that is a hosted-runner limitation or a defect,
+  and it is tracked in [issue #1](https://github.com/Convira/convira-sandbox/issues/1). Those
+  cases are skipped rather than passed, so the suite never reports confinement it has not
+  observed - but do not read the Windows tick as more than "the unit suites hold".
 
 We would rather state these plainly than have someone discover them and conclude the rest was
 oversold too.
