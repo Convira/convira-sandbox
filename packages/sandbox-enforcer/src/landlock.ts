@@ -195,8 +195,15 @@ export function applyLandlockRuleset(ruleset: LandlockRuleset): void {
       // collapsed, then rejoin the leaf — otherwise a symlinked parent would
       // let the rule attach to the symlink target and escape the sandbox.
       // If the parent itself cannot be resolved, fail closed (skip the rule).
+      //
+      // path.posix, not path: a Landlock rule names a path in the Linux
+      // kernel's namespace, so its separator is a property of the target and
+      // not of whatever host happens to be running this code. On Linux the two
+      // are identical, so this changes no behaviour where the feature exists -
+      // it stops the host OS silently choosing the separator, which is what
+      // made these lines emit "\real\target\newfile" under a Windows test run.
       try {
-        return path.join(fs.realpathSync(path.dirname(p)), path.basename(p));
+        return path.posix.join(fs.realpathSync(path.posix.dirname(p)), path.posix.basename(p));
       } catch {
         return null;
       }
