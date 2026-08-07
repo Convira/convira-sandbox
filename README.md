@@ -29,13 +29,19 @@ Read this part before the rest.
 - **No third-party audit has been performed on this code.** When one is, the report will be
   linked here. Until then, treat this as source you can read, not as source someone else has
   vouched for.
-- **A green CI tick does not currently prove confinement on Windows.** The Windows unit suites
-  pass, but the four integration cases that launch a real confined process are skipped there:
-  on GitHub-hosted runners the AppContainer launcher fails with `CreateProcessW failed
-  (code 203)`. It is an open question whether that is a hosted-runner limitation or a defect,
-  and it is tracked in [issue #1](https://github.com/Convira/convira-sandbox/issues/1). Those
-  cases are skipped rather than passed, so the suite never reports confinement it has not
-  observed - but do not read the Windows tick as more than "the unit suites hold".
+- **Only the macOS CI leg currently exercises real confinement.** Four integration cases launch
+  an actually-confined process; the rest of the suite is unit-level. Today those four run on
+  macOS only:
+
+  | Leg | Integration cases | Why |
+  | --- | --- | --- |
+  | macOS | run | `sandbox-exec` is present |
+  | Linux | skipped | `bwrap` is not installed on the hosted runner, so the adapter resolves to passthrough |
+  | Windows | skipped | the AppContainer launcher fails with `CreateProcessW failed (code 203)` - [issue #1](https://github.com/Convira/convira-sandbox/issues/1) |
+
+  They are skipped, never passed, so the suite never reports confinement it has not observed.
+  But read a green Linux or Windows tick as "the unit suites hold", not as proof that the
+  sandbox confines anything on that platform.
 
 We would rather state these plainly than have someone discover them and conclude the rest was
 oversold too.
