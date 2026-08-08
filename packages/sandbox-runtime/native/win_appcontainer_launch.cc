@@ -82,6 +82,16 @@ void PrintError(const wchar_t* stage, DWORD code) {
            static_cast<unsigned long>(code));
 }
 
+// Reports whether a variable is set WITHOUT printing its value: these names
+// carry user paths and this text goes to public CI logs. The two-character
+// probe buffer is deliberate rather than sloppy - a too-small buffer is not a
+// failure for GetEnvironmentVariableW, which answers the REQUIRED size, so only
+// a genuinely absent variable answers 0.
+const wchar_t* EnvPresence(const wchar_t* name) {
+  wchar_t probe[2];
+  return GetEnvironmentVariableW(name, probe, ARRAYSIZE(probe)) > 0 ? L"present" : L"MISSING";
+}
+
 bool ReadFileBytes(const std::wstring& path, std::string* out) {
   HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                             FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -659,16 +669,24 @@ int wmain(int argc, wchar_t** argv) {
       // environment still carries the variables Windows needs, are different
       // faults that this one code cannot distinguish.
       const DWORD imageAttributes = GetFileAttributesW(applicationName.c_str());
-      wchar_t systemRootProbe[8];
-      const DWORD systemRootLen =
-          GetEnvironmentVariableW(L"SystemRoot", systemRootProbe, ARRAYSIZE(systemRootProbe));
-      wchar_t pathProbe[8];
-      const DWORD pathLen = GetEnvironmentVariableW(L"PATH", pathProbe, ARRAYSIZE(pathProbe));
+      // The first version of this printed SystemRoot and PATH only, and both
+      // came back present - which retired the obvious reading of code 203 and
+      // left nothing to go on. The set below is every input CreateProcessW
+      // consults for an AppContainer child that the caller can plausibly have
+      // stripped: the AC profile lives under LOCALAPPDATA, and the working
+      // directory matters because the drive it sits on may differ from the
+      // image's. Presence only, never values - this goes to public CI logs.
+      wchar_t cwd[MAX_PATH];
+      const DWORD cwdLen = GetCurrentDirectoryW(ARRAYSIZE(cwd), cwd);
       fwprintf(stderr,
-               L"[convira_sbx_launch] image=%ls attrs=%lu SystemRoot=%ls PATH=%ls\n",
+               L"[convira_sbx_launch] image=%ls attrs=%lu cwd=%ls\n"
+               L"[convira_sbx_launch] env SystemRoot=%ls SystemDrive=%ls PATH=%ls "
+               L"LOCALAPPDATA=%ls APPDATA=%ls USERPROFILE=%ls TEMP=%ls\n",
                applicationName.c_str(), static_cast<unsigned long>(imageAttributes),
-               systemRootLen > 0 ? L"present" : L"MISSING",
-               pathLen > 0 ? L"present" : L"MISSING");
+               cwdLen > 0 && cwdLen < ARRAYSIZE(cwd) ? cwd : L"<unavailable>",
+               EnvPresence(L"SystemRoot"), EnvPresence(L"SystemDrive"), EnvPresence(L"PATH"),
+               EnvPresence(L"LOCALAPPDATA"), EnvPresence(L"APPDATA"),
+               EnvPresence(L"USERPROFILE"), EnvPresence(L"TEMP"));
       PrintError(L"CreateProcessW", spawnError);
       break;
     }
