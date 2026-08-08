@@ -29,19 +29,27 @@ Read this part before the rest.
 - **No third-party audit has been performed on this code.** When one is, the report will be
   linked here. Until then, treat this as source you can read, not as source someone else has
   vouched for.
-- **Only the macOS CI leg currently exercises real confinement.** Four integration cases launch
-  an actually-confined process; the rest of the suite is unit-level. Today those four run on
-  macOS only:
+- **CI exercises real confinement on all three platforms, but on runner configurations.**
+  Four integration cases launch an actually-confined process and assert that a read, a write
+  and an outbound connection are refused; the rest of the suite is unit-level. All four run
+  on every leg:
 
-  | Leg | Integration cases | Why |
-  | --- | --- | --- |
-  | macOS | run | `sandbox-exec` is present |
-  | Linux | skipped | `bwrap` is not installed on the hosted runner, so the adapter resolves to passthrough |
-  | Windows | skipped | the AppContainer launcher fails with `CreateProcessW failed (code 203)` - [issue #1](https://github.com/Convira/convira-sandbox/issues/1) |
+  | Leg | Integration cases | Backend | Runner needed |
+  | --- | --- | --- | --- |
+  | macOS | run | Seatbelt (`sandbox-exec`) | nothing, it ships with the OS |
+  | Linux | run | bubblewrap | `bwrap` installed, and `kernel.apparmor_restrict_unprivileged_userns=0` |
+  | Windows | run | AppContainer + Job Objects | nothing |
 
-  They are skipped, never passed, so the suite never reports confinement it has not observed.
-  But read a green Linux or Windows tick as "the unit suites hold", not as proof that the
-  sandbox confines anything on that platform.
+  They are skipped, never passed, so the suite still reports nothing it has not observed - a
+  host without a native sandbox marks them skipped rather than green. The denial cases cannot
+  pass under the passthrough adapter, since an unconfined child reads the file it was supposed
+  to be refused, so a green leg is evidence and not just a tick.
+
+  The Linux row carries a real asterisk. Ubuntu 24.04 ships an AppArmor profile that grants
+  `bwrap` its user namespace but withholds `CAP_NET_ADMIN` inside it, so `--unshare-net` dies
+  configuring loopback with `Failed RTM_NEWADDR: Operation not permitted`. CI relaxes that
+  sysctl on the runner. Whether a stock 24.04 desktop behaves the same way is
+  **not yet tested** - [issue #2](https://github.com/Convira/convira-sandbox/issues/2).
 
 We would rather state these plainly than have someone discover them and conclude the rest was
 oversold too.
