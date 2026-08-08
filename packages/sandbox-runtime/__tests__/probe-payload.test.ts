@@ -121,7 +121,11 @@ describe("probeSelftestHandshake", () => {
 
   it(
     "ignores the exit code, because a child that merely exits 0 proves nothing",
-    { timeout: 20_000 },
+    // 20s was tuned on a quiet machine and timed out on a hosted macOS runner
+    // once the Windows and Linux integration cases started competing for the
+    // same worker pool. The nonce round trip this waits on spawns a real child;
+    // the budget absorbs a slow runner rather than measuring one.
+    { timeout: 60_000 },
     () => {
       // This is the whole point of the nonce. The packaged probe child DID exit
       // 0 - it booted the app, lost the single-instance lock and quit - which is

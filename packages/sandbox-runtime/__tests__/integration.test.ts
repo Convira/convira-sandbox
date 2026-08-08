@@ -66,6 +66,16 @@ function nodeBootReadPaths(): string[] {
  */
 const requiresSandbox = it.skipIf(!hasNativeSandbox);
 
+/**
+ * Each case here creates an AppContainer profile or a bwrap namespace, applies
+ * ACLs, and spawns a real Node child - roughly 2s per case on a hosted Windows
+ * runner, and the FIRST one pays the profile-creation cost on top. Vitest's 5s
+ * default was tuned for unit tests and was already timing that first case out
+ * on win32 while the other three passed at ~2.2s. The generous ceiling is
+ * deliberate: this budget exists to absorb a slow runner, not to measure one.
+ */
+const SANDBOXED_CASE_TIMEOUT_MS = 60_000;
+
 describe("integration: filesystem isolation", () => {
   requiresSandbox("denies reading files outside allowed paths", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-int-"));
@@ -82,7 +92,14 @@ describe("integration: filesystem isolation", () => {
       command: process.execPath,
       args: [
         "-e",
-        `try { require('fs').readFileSync('${sensitiveFile}'); process.exit(0); } catch { process.exit(42); }`,
+        // JSON.stringify, never a quoted `${...}`. These paths are interpolated
+        // into JavaScript SOURCE, and a Windows path is full of backslashes
+        // that a string literal then eats as escapes: the `\t` of
+        // `...\Temp\...` becomes a tab. The mangled path fails to open, the
+        // child exits 42, and a denial test PASSES without the sandbox having
+        // denied anything. That is a false green, which is worse here than a
+        // red - so the escaping is load bearing, not tidiness.
+        `try { require('fs').readFileSync(${JSON.stringify(sensitiveFile)}); process.exit(0); } catch { process.exit(42); }`,
       ],
       cwd: tmpDir,
       env: { PATH: process.env.PATH || "", HOME: tmpDir },
@@ -111,7 +128,7 @@ describe("integration: filesystem isolation", () => {
 
     fs.rmSync(probeDir, { recursive: true, force: true });
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
+  }, SANDBOXED_CASE_TIMEOUT_MS);
 
   requiresSandbox("allows reading/writing within permitted paths", async () => {
     const tmpDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "sb-int-ok-")));
@@ -123,8 +140,12 @@ describe("integration: filesystem isolation", () => {
       args: [
         "-e",
         `const fs = require('fs'); ` +
-          `const data = fs.readFileSync('${testFile}', 'utf-8'); ` +
-          `fs.writeFileSync('${path.join(tmpDir, "output.txt")}', data.toUpperCase()); ` +
+          // See the escaping note on the read-denial case. This test is also
+          // the canary for it: it is the only one that asserts SUCCESS, so a
+          // mangled path can only ever fail it - which is exactly how the bug
+          // was found, and why it stays a positive-path assertion.
+          `const data = fs.readFileSync(${JSON.stringify(testFile)}, 'utf-8'); ` +
+          `fs.writeFileSync(${JSON.stringify(path.join(tmpDir, "output.txt"))}, data.toUpperCase()); ` +
           `process.exit(0);`,
       ],
       cwd: tmpDir,
@@ -151,7 +172,7 @@ describe("integration: filesystem isolation", () => {
     expect(output).toBe("HELLO SANDBOX");
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
+  }, SANDBOXED_CASE_TIMEOUT_MS);
 
   requiresSandbox("denies writing outside allowed paths", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-int-deny-write-"));
@@ -162,7 +183,8 @@ describe("integration: filesystem isolation", () => {
       command: process.execPath,
       args: [
         "-e",
-        `try { require('fs').writeFileSync('${forbiddenPath}', 'pwned'); process.exit(0); } catch { process.exit(42); }`,
+          // JSON.stringify - see the escaping note on the read-denial case.
+        `try { require('fs').writeFileSync(${JSON.stringify(forbiddenPath)}, 'pwned'); process.exit(0); } catch { process.exit(42); }`,
       ],
       cwd: tmpDir,
       env: { PATH: process.env.PATH || "", HOME: tmpDir },
@@ -191,7 +213,7 @@ describe("integration: filesystem isolation", () => {
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
     fs.rmSync(forbiddenDir, { recursive: true, force: true });
-  });
+  }, SANDBOXED_CASE_TIMEOUT_MS);
 });
 
 describe("integration: network isolation", () => {
@@ -232,7 +254,7 @@ describe("integration: network isolation", () => {
     expect(result.status, result.stderr).toBe(42);
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
+  }, SANDBOXED_CASE_TIMEOUT_MS);
 });
 
 describe("integration: adapter detection", () => {

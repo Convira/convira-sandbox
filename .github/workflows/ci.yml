@@ -34,7 +34,16 @@ jobs:
       # assumes it means.
       - name: Install bubblewrap (Linux confinement backend)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+        run: |
+          sudo apt-get update && sudo apt-get install -y bubblewrap
+          # Ubuntu 24.04 ships an AppArmor profile that permits bwrap's user
+          # namespace but withholds CAP_NET_ADMIN inside it, so `--unshare-net`
+          # creates the namespace and then dies configuring loopback:
+          # "Failed RTM_NEWADDR: Operation not permitted". This restores the
+          # kernel default the sandbox is written against. It relaxes the
+          # RUNNER, never the sandbox - the confinement under test is the same
+          # code either way, and this is what lets it be tested at all.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Install
         run: pnpm install --frozen-lockfile
