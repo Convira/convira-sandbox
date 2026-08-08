@@ -28,6 +28,14 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # Without bwrap the Linux adapter resolves to passthrough, the integration
+      # cases skip, and this leg goes green having exercised no confinement at
+      # all. Installing it is what makes the Linux tick mean what a reader
+      # assumes it means.
+      - name: Install bubblewrap (Linux confinement backend)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
+
       - name: Install
         run: pnpm install --frozen-lockfile
 
