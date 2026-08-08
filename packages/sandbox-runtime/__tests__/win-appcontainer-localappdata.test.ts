@@ -1,27 +1,26 @@
 /**
- * Windows-only DIAGNOSTIC for issue #1, not a confinement gate.
+ * Windows-only regression test for issue #1.
  *
- * `integration.test.ts` is skipped on win32 because the AppContainer launcher
- * answers `CreateProcessW failed (code 203)` on GitHub-hosted runners. Three
- * plausible causes were argued from the log alone and each died against some
- * other fact in the same log, so this file stops arguing and runs the
- * experiment on the only Windows machine available: the CI runner.
+ * This file began as an environment bisection: `integration.test.ts` failed on
+ * win32 with `CreateProcessW failed (code 203)`, three readings of that code
+ * were argued from the log and each died against another fact in the same log,
+ * so the experiment ran on the CI runner instead - same spec, same child, one
+ * environment block changed at a time. LOCALAPPDATA came back both necessary
+ * and sufficient: every other candidate still failed, that one passed. An
+ * AppContainer profile lives under `%LOCALAPPDATA%\Packages`, and
+ * CreateProcessW resolves it from the caller's environment, so 203 was telling
+ * the literal truth - it could not find an environment variable.
  *
- * The one thing that separates the failing suite from every passing one is the
- * environment. `integration.test.ts` replaces the child environment wholesale
- * with `{ PATH, HOME }`; every suite that passes inherits the real one, and the
- * desktop runner that ships to users passes a named allowlist that includes
- * LOCALAPPDATA, APPDATA and USERPROFILE. So environment content is the variable
- * to isolate, and this bisects it: same spec, same child, one env block
- * changed at a time.
+ * Two things came out of that, and this pins the second:
+ *   1. `withAppContainerRequiredEnv` in the adapter supplies the variable, so
+ *      no caller has to know. Covered off-Windows in `native-windows.test.ts`.
+ *   2. The launcher refuses up front, by name, if it is ever invoked without
+ *      it - because a bare 203 is what made this expensive. That is what this
+ *      file checks, and it can only be checked on Windows.
  *
- * It asserts only the control leg, and prints a table for the rest. A
- * diagnostic that gates would make the answer harder to read, not easier - the
- * point is to learn which variable moves the failure, then fix that in
- * `integration.test.ts` (or in the launcher) and let the real integration
- * cases do the gating.
- *
- * Delete this file once issue #1 closes.
+ * The bisection itself is not kept: its answer is now load bearing in three
+ * places, and re-running nine real AppContainer spawns every CI pass would cost
+ * ~30s to re-derive a settled fact.
  */
 
 import { describe, it, expect } from "vitest";
@@ -33,96 +32,44 @@ import { createSandboxedSpawn, type SandboxAdapter } from "../src/index.js";
 
 const describeWin = describe.skipIf(process.platform !== "win32");
 
-/** Mirrors WINDOWS_ENV_ALLOWLIST in the desktop sandboxed-process-runner. */
-const PRODUCTION_ALLOWLIST = [
-  "SystemRoot",
-  "SystemDrive",
-  "windir",
-  "COMSPEC",
-  "PATHEXT",
-  "NUMBER_OF_PROCESSORS",
-  "PROCESSOR_ARCHITECTURE",
-  "USERPROFILE",
-  "LOCALAPPDATA",
-  "APPDATA",
-] as const;
+describeWin("issue #1 - the launcher names LOCALAPPDATA rather than answering 203", () => {
+  it("refuses with a named message when the variable is absent", async () => {
+    const adapter: SandboxAdapter = await createSandboxedSpawn("auto");
+    if (adapter.platform === "passthrough") return;
 
-function pick(keys: readonly string[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const k of keys) {
-    const v = process.env[k];
-    if (typeof v === "string") out[k] = v;
-  }
-  return out;
-}
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-lad-"));
+    try {
+      const spec = await adapter.wrapSpawn({
+        command: process.execPath,
+        args: ["-e", "process.exit(42)"],
+        cwd: tmpDir,
+        env: { PATH: process.env["PATH"] || "" },
+        filesystem: { readPaths: [tmpDir, path.dirname(process.execPath)], writePaths: [tmpDir] },
+        network: { enabled: false, allowLoopback: false },
+        resources: { memoryMb: 2048, maxProcesses: 8 },
+      });
 
-describeWin("issue #1 - which environment variable does the AC child need", () => {
-  it(
-    "bisects the environment against a child that only has to start",
-    async () => {
-      const adapter: SandboxAdapter = await createSandboxedSpawn("auto");
-      if (adapter.platform === "passthrough") {
-        console.log("[issue-1] no AppContainer on this host; nothing to bisect");
-        return;
-      }
+      // The adapter just supplied it, which is the fix. Removing it here is the
+      // only way to reach the launcher's backstop, and reaching it is the point:
+      // this asserts what a caller OUTSIDE this adapter is told.
+      expect(spec.env["LOCALAPPDATA"]).toBeTypeOf("string");
+      const stripped = { ...spec.env };
+      delete stripped["LOCALAPPDATA"];
 
-      const nodeDir = path.dirname(process.execPath);
-      const minimal = { PATH: process.env.PATH || "" };
+      const result = spawnSync(spec.command, spec.args, {
+        cwd: spec.cwd,
+        env: stripped,
+        timeout: 30_000,
+        encoding: "utf-8",
+      });
 
-      const variants: Array<{ name: string; env: Record<string, string> }> = [
-        { name: "full process.env (control)", env: { ...process.env } as Record<string, string> },
-        { name: "PATH+HOME (what integration.test.ts sends)", env: { ...minimal, HOME: "" } },
-        { name: "PATH only", env: { ...minimal } },
-        { name: "PATH+LOCALAPPDATA", env: { ...minimal, ...pick(["LOCALAPPDATA"]) } },
-        { name: "PATH+APPDATA", env: { ...minimal, ...pick(["APPDATA"]) } },
-        { name: "PATH+USERPROFILE", env: { ...minimal, ...pick(["USERPROFILE"]) } },
-        { name: "PATH+SystemRoot+SystemDrive", env: { ...minimal, ...pick(["SystemRoot", "SystemDrive"]) } },
-        { name: "PATH+TEMP+TMP", env: { ...minimal, ...pick(["TEMP", "TMP"]) } },
-        { name: "production allowlist", env: { ...pick(PRODUCTION_ALLOWLIST), PATH: process.env.PATH || "" } },
-      ];
-
-      const rows: string[] = [];
-      for (const variant of variants) {
-        // A fresh spec per variant is REQUIRED, not tidiness: the launcher
-        // deletes its grants file in cleanup on both the success and the
-        // failure path, so a reused spec would fail for a second, unrelated
-        // reason and poison every row after the first.
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "sb-envprobe-"));
-        const spec = await adapter.wrapSpawn({
-          command: process.execPath,
-          // The child does nothing but exit 42. Anything else would let a
-          // sandbox denial masquerade as a launch failure, which is the exact
-          // confusion this test exists to remove.
-          args: ["-e", "process.exit(42)"],
-          cwd: tmpDir,
-          env: variant.env,
-          filesystem: { readPaths: [tmpDir, nodeDir], writePaths: [tmpDir] },
-          network: { enabled: false, allowLoopback: false },
-          resources: { memoryMb: 2048, maxProcesses: 8 },
-        });
-
-        const result = spawnSync(spec.command, spec.args, {
-          cwd: spec.cwd,
-          env: spec.env,
-          timeout: 30_000,
-          encoding: "utf-8",
-        });
-
-        const started = result.status === 42;
-        const detail = started
-          ? "child started and exited 42"
-          : `status=${result.status} ${(result.stderr || "").trim().replace(/\s+/g, " ").slice(0, 200)}`;
-        rows.push(`${started ? "PASS" : "FAIL"}  ${variant.name.padEnd(42)} ${detail}`);
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-      }
-
-      console.log("\n[issue-1] environment bisection\n" + rows.join("\n") + "\n");
-
-      // Only the control is asserted. If a child cannot start even with the
-      // real environment then the launcher is broken independently of issue
-      // #1, and that deserves a red run.
-      expect(rows[0]).toMatch(/^PASS/);
-    },
-    240_000,
-  );
+      expect(result.status).not.toBe(42);
+      expect(result.stderr).toContain("LOCALAPPDATA");
+      // The failure must be the early, explanatory one - not the bare code 203
+      // three stages later that this whole exercise was about.
+      expect(result.stderr).not.toContain("code 203");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

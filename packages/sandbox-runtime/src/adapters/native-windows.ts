@@ -97,6 +97,31 @@ export function _windowsSandboxAvailable(platform: NodeJS.Platform = process.pla
  */
 let _unavailableReason: string | undefined;
 
+/**
+ * An AppContainer's per-profile directory lives under `%LOCALAPPDATA%\Packages`,
+ * and `CreateProcessW` resolves it FROM THE ENVIRONMENT of the calling process.
+ * Strip that one variable and the launch fails with `ERROR_ENVVAR_NOT_FOUND`
+ * (203) - which names no variable, points at no file, and is indistinguishable
+ * from a bad image path until you bisect the environment. It cost this repo an
+ * issue and three wrong theories (#1).
+ *
+ * So the requirement belongs here rather than in every caller's env allowlist.
+ * A caller building a deliberately minimal environment - which is the correct
+ * instinct for a sandbox - has no way to know that this specific name is load
+ * bearing for the Windows *host API*, as opposed to for the child.
+ *
+ * Only filled in when absent, so an explicit caller value still wins. The cost
+ * is that the confined child also sees the variable: it names a directory the
+ * child has no ACE for and therefore cannot read, and PATH already discloses
+ * the same username, so this widens no boundary that was previously closed.
+ */
+function withAppContainerRequiredEnv(env: Record<string, string>): Record<string, string> {
+  if (typeof env["LOCALAPPDATA"] === "string") return env;
+  const inherited = process.env["LOCALAPPDATA"];
+  if (typeof inherited !== "string" || inherited.length === 0) return env;
+  return { ...env, LOCALAPPDATA: inherited };
+}
+
 export const windowsAdapter: SandboxAdapter = {
   platform: "windows-job-objects",
 
@@ -235,7 +260,7 @@ export const windowsAdapter: SandboxAdapter = {
           config.command,
           ...config.args,
         ],
-        env: config.env,
+        env: withAppContainerRequiredEnv(config.env),
         cwd: config.cwd,
         // The Job Object attaches to the LAUNCHER pid; the AC child joins
         // that job automatically at CreateProcessW (it is created by a job

@@ -87,10 +87,12 @@ void PrintError(const wchar_t* stage, DWORD code) {
 // probe buffer is deliberate rather than sloppy - a too-small buffer is not a
 // failure for GetEnvironmentVariableW, which answers the REQUIRED size, so only
 // a genuinely absent variable answers 0.
-const wchar_t* EnvPresence(const wchar_t* name) {
+bool EnvIsSet(const wchar_t* name) {
   wchar_t probe[2];
-  return GetEnvironmentVariableW(name, probe, ARRAYSIZE(probe)) > 0 ? L"present" : L"MISSING";
+  return GetEnvironmentVariableW(name, probe, ARRAYSIZE(probe)) > 0;
 }
+
+const wchar_t* EnvPresence(const wchar_t* name) { return EnvIsSet(name) ? L"present" : L"MISSING"; }
 
 bool ReadFileBytes(const std::wstring& path, std::string* out) {
   HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
@@ -568,6 +570,25 @@ int wmain(int argc, wchar_t** argv) {
   std::vector<GrantEntry> grants;
   if (!ParseGrants(grantsRaw, &grants)) {
     fwprintf(stderr, L"[convira_sbx_launch] malformed grants file\n");
+    return 1;
+  }
+
+  // Checked BEFORE the profile is created and any ACL is applied, because the
+  // failure it prevents is otherwise reported as a bare `CreateProcessW failed
+  // (code 203)` three stages later - an error that names nothing and reads like
+  // a bad image path. An AppContainer profile directory lives under
+  // %LOCALAPPDATA%\Packages and CreateProcessW resolves it from this process's
+  // environment, so without the variable the launch cannot succeed no matter
+  // what the rest of the setup does. Say so here, once, in words.
+  //
+  // The adapter fills this in (see withAppContainerRequiredEnv), so reaching
+  // this message means the launcher was invoked by something else.
+  if (!EnvIsSet(L"LOCALAPPDATA")) {
+    fwprintf(stderr,
+             L"[convira_sbx_launch] LOCALAPPDATA is not set in this process's environment. "
+             L"An AppContainer profile lives under %%LOCALAPPDATA%%\\Packages and CreateProcessW "
+             L"resolves it from the environment, so the spawn would fail with "
+             L"ERROR_ENVVAR_NOT_FOUND (203). Pass LOCALAPPDATA through.\n");
     return 1;
   }
 

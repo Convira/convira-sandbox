@@ -340,6 +340,54 @@ describe("windowsAdapter", () => {
     }
   });
 
+  // Issue #1. An AppContainer profile lives under %LOCALAPPDATA%\Packages and
+  // CreateProcessW resolves it from the environment, so a caller that builds a
+  // minimal env - the correct instinct for a sandbox - got
+  // ERROR_ENVVAR_NOT_FOUND (203), an error naming no variable and no file. The
+  // adapter owns the requirement now; these two pin that it keeps owning it.
+  it("supplies LOCALAPPDATA when the caller's environment omits it", async () => {
+    const ledger = fs.mkdtempSync(path.join(os.tmpdir(), "sbx-ac-lad-"));
+    _setWinAppContainerLedgerDirForTests(ledger);
+    _setWinAppContainerLauncherForTests("C:\\app\\convira_sbx_launch.exe");
+    _setGrantPathExistsForTests(() => true);
+    pinAcProbes({ filesystem: true, network: true, caging: true });
+    _setWinJobObjectBindingsForTests(makeRecordingBindings());
+    const previous = process.env["LOCALAPPDATA"];
+    process.env["LOCALAPPDATA"] = "C:\\Users\\dev\\AppData\\Local";
+    try {
+      const spec = await windowsAdapter.wrapSpawn(makeConfig({ env: { PATH: "C:\\Windows" } }));
+      expect(spec.env["LOCALAPPDATA"]).toBe("C:\\Users\\dev\\AppData\\Local");
+      // The caller's own entries survive; this fills a gap, it does not replace
+      // the environment.
+      expect(spec.env["PATH"]).toBe("C:\\Windows");
+    } finally {
+      if (previous === undefined) delete process.env["LOCALAPPDATA"];
+      else process.env["LOCALAPPDATA"] = previous;
+      fs.rmSync(ledger, { recursive: true, force: true });
+    }
+  });
+
+  it("never overrides a LOCALAPPDATA the caller set explicitly", async () => {
+    const ledger = fs.mkdtempSync(path.join(os.tmpdir(), "sbx-ac-lad2-"));
+    _setWinAppContainerLedgerDirForTests(ledger);
+    _setWinAppContainerLauncherForTests("C:\\app\\convira_sbx_launch.exe");
+    _setGrantPathExistsForTests(() => true);
+    pinAcProbes({ filesystem: true, network: true, caging: true });
+    _setWinJobObjectBindingsForTests(makeRecordingBindings());
+    const previous = process.env["LOCALAPPDATA"];
+    process.env["LOCALAPPDATA"] = "C:\\Users\\host\\AppData\\Local";
+    try {
+      const spec = await windowsAdapter.wrapSpawn(
+        makeConfig({ env: { PATH: "C:\\Windows", LOCALAPPDATA: "C:\\Users\\caller\\AppData\\Local" } }),
+      );
+      expect(spec.env["LOCALAPPDATA"]).toBe("C:\\Users\\caller\\AppData\\Local");
+    } finally {
+      if (previous === undefined) delete process.env["LOCALAPPDATA"];
+      else process.env["LOCALAPPDATA"] = previous;
+      fs.rmSync(ledger, { recursive: true, force: true });
+    }
+  });
+
   it("passes --allow-network (INTERNET_CLIENT capability SID) for network-enabled spawns", async () => {
     const ledger = fs.mkdtempSync(path.join(os.tmpdir(), "sbx-ac-wrapnet-"));
     _setWinAppContainerLedgerDirForTests(ledger);

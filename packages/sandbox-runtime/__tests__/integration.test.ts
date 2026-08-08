@@ -50,18 +50,21 @@ function nodeBootReadPaths(): string[] {
  * on a host with no native sandbox — so a CI leg without one looked like proof
  * of confinement. `it.skipIf` marks it skipped, which is the honest signal.
  *
- * win32 is excluded for the same reason, and it is a KNOWN GAP rather than a
- * property of the platform: on GitHub-hosted Windows runners the AppContainer
- * launcher fails to start the child with `CreateProcessW failed (code 203)`,
- * so these cases cannot run there yet. Tracked in
- * https://github.com/Convira/convira-sandbox/issues/1.
+ * win32 WAS excluded on top of that, because the AppContainer launcher answered
+ * `CreateProcessW failed (code 203)` on GitHub-hosted runners. The cause was
+ * this file, not the platform: it replaced the child environment with
+ * `{ PATH, HOME }`, and an AppContainer profile lives under
+ * `%LOCALAPPDATA%\Packages`, which CreateProcessW resolves from the
+ * environment. An environment bisection on the CI runner showed LOCALAPPDATA
+ * alone to be both necessary and sufficient - every other candidate still
+ * failed, that one passed. The adapter now guarantees it
+ * (`withAppContainerRequiredEnv`), so the requirement no longer rides on each
+ * caller remembering it. See issue #1.
  *
- * They are skipped, never passed. A green Windows leg today proves the unit
- * suites (native-windows, win-job-object, win-appcontainer) hold; it does NOT
- * prove real confinement on Windows, and nothing here should be read that way
- * until issue #1 closes.
+ * The remaining skip is honest: a host with no native sandbox reports skipped,
+ * never passed.
  */
-const requiresSandbox = it.skipIf(!hasNativeSandbox || process.platform === "win32");
+const requiresSandbox = it.skipIf(!hasNativeSandbox);
 
 describe("integration: filesystem isolation", () => {
   requiresSandbox("denies reading files outside allowed paths", async () => {
